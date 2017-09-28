@@ -1,11 +1,14 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 
 	"github.com/hxlhxl/go-utils/path"
@@ -16,10 +19,6 @@ type ShellServer struct {
 	Port       string
 	StaticPath map[string]string
 	Router     map[string]*Route
-}
-
-type HandlerWrapper struct {
-	method string
 }
 
 // var Routes []*Route
@@ -42,10 +41,66 @@ func InitHttpShell(ip, port string) *ShellServer {
 	return HttpShell
 }
 
-func InitRoute(uri string, handler http.HandlerFunc) {
+type UD struct {
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+// func InitRoute(uri string, handler http.HandlerFunc) {
+// func InitRoute(uri string, rh *RouteHandler) {
+func InitRoute(uri string, aw ApiWrapper) {
 	// Routes = append(Routes, &Route{uri, http.HandlerFunc(handler)})
 	// http.HandlerFunc就是把一个handler转换为拥有ServeHttp方法的接口类型
-	Routes[uri] = &Route{uri, http.HandlerFunc(handler)}
+	// reflect接口是value,type 对
+
+	reflectVal := reflect.ValueOf(aw)
+	t := reflect.Indirect(reflectVal).Type()
+	fmt.Println("reflectVal", reflectVal, "reflect type", t)
+
+	ctl := reflect.New(t)
+	init := ctl.MethodByName("Init")
+	init.Call(nil)
+
+	h := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			method := ctl.MethodByName("GET")
+			fmt.Println("controller type", ctl.Type(), "method name", runtime.FuncForPC(method.Pointer()).Name(), "method type", method.Type(), "method string", method.String())
+			// 调用controller中的GET|POST等方法
+			method.Call(nil)
+
+			// fmt.Println(ctl.Kind(), ctl.Elem())
+			// elem := ctl.Elem()
+			// fmt.Println("jsondata", elem.FieldByName("JsonData"))
+			// jsonData := elem.FieldByName("JsonData")
+
+			// js, _ := jsonData.Interface()
+
+			// if js, ok := jsonData["json"]; ok {
+			// 	fmt.Println("解析json成功！", js)
+			// }
+			// jsonData := elem.FieldByName("JsonData").Interface()
+			// fmt.Println("interface jsondata", jsonData, jsonData.json)
+
+			get_json := ctl.MethodByName("ServeJSON")
+			js := get_json.Call(nil)
+			fmt.Println("%v", js)
+			x, err := json.Marshal(js)
+			// ud := &UD{Name: "huaxiong", Age: 24}
+			// ujs, err := json.Marshal(ud)
+			if err != nil {
+				fmt.Println("%v", err)
+			}
+			if err == nil {
+				fmt.Println("marshal json %v", x)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(x)
+				return
+				// fmt.Fprintf(w, fmt.Sprintf("%s", []byte(jsonData)))
+			}
+		}
+
+	}
+	Routes[uri] = &Route{uri, http.HandlerFunc(h)}
 }
 
 func stripPrefix(prefix string, h http.Handler) http.Handler {

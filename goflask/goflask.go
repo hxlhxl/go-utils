@@ -1,0 +1,3 @@
+package goflask
+
+func f() {}
